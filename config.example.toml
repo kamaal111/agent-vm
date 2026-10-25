@@ -1,12 +1,15 @@
-# No credentials. Prepare both images yourself; blank images never trigger downloads.
+# Optional per-host overrides; the normal run command works without this file.
+# Omit base_image to use pinned upstream Ubuntu/macOS 27 defaults.
+# Omit identity_file to generate a dedicated key during approved setup.
+# Explicit image overrides require manual preparation, SSH authorization and trust.
 default_os = "linux"
 default_agent = "codex"
-identity_file = "/Users/you/.ssh/agent-vm"
+# identity_file = "/Users/you/.ssh/agent-vm"
 boot_timeout_seconds = 180
 
 [linux]
 default_vm = "agent-linux"
-base_image = "agent-linux-base-v1"
+# base_image = "agent-linux-base-v1"
 user = "admin"
 cpu = 4
 memory_mib = 8192
@@ -14,7 +17,7 @@ disk_gb = 60
 
 [macos]
 default_vm = "agent-macos"
-base_image = "agent-macos-base-v1"
+# base_image = "agent-macos-base-v1"
 user = "admin"
 cpu = 4
 memory_mib = 8192

@@ -38,34 +38,22 @@ func Excluded(path string) bool {
 	}
 	return false
 }
-func Prepare(ctx context.Context, r host.Runner, source string) (Snapshot, error) {
+func inspectSource(ctx context.Context, r host.Runner, source string) (string, []string, error) {
 	root, err := filepath.Abs(source)
 	if err != nil {
-		return Snapshot{}, err
+		return "", nil, err
 	}
 	root, err = filepath.EvalSymlinks(root)
 	if err != nil {
-		return Snapshot{}, err
+		return "", nil, err
 	}
 	info, err := os.Stat(root)
 	if err != nil {
-		return Snapshot{}, err
+		return "", nil, err
 	}
 	if !info.IsDir() {
-		return Snapshot{}, fmt.Errorf("project source is not a directory")
+		return "", nil, fmt.Errorf("project source is not a directory")
 	}
-	sum := sha256.Sum256([]byte(root))
-	s := Snapshot{Source: root, Project: fmt.Sprintf("%s-%x", filepath.Base(root), sum[:6])}
-	s.Dir, err = os.MkdirTemp("", "agent-vm-project-")
-	if err != nil {
-		return s, err
-	}
-	ok := false
-	defer func() {
-		if !ok {
-			os.RemoveAll(s.Dir)
-		}
-	}()
 	git := func(args ...string) ([]byte, error) {
 		return r.Run(ctx, host.Command{Name: "git", Args: append([]string{"-c", "core.fsmonitor=false"}, args...), Dir: root, Env: gitEnvironment()})
 	}
@@ -74,22 +62,25 @@ func Prepare(ctx context.Context, r host.Runner, source string) (Snapshot, error
 	if statErr == nil {
 		b, err := git("ls-files", "--stage", "-z")
 		if err != nil {
-			return s, err
+			return "", nil, err
 		}
 		for _, entry := range strings.Split(string(b), "\x00") {
 			if strings.HasPrefix(entry, "160000 ") {
-				return s, fmt.Errorf("Git submodules are unsupported; materialize a separate project first")
+				return "", nil, fmt.Errorf("Git submodules are unsupported; materialize a separate project first")
 			}
 		}
 		b, err = git("ls-files", "--cached", "--others", "--exclude-standard", "-z")
 		if err != nil {
-			return s, err
+			return "", nil, err
 		}
 		files = strings.Split(string(b), "\x00")
 	} else if !os.IsNotExist(statErr) {
-		return s, statErr
+		return "", nil, statErr
 	} else {
 		err = filepath.WalkDir(root, func(path string, d fs.DirEntry, e error) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if e != nil {
 				return e
 			}
@@ -112,9 +103,51 @@ func Prepare(ctx context.Context, r host.Runner, source string) (Snapshot, error
 			return nil
 		})
 		if err != nil {
-			return s, err
+			return "", nil, err
 		}
 	}
+	for _, rel := range files {
+		if err := ctx.Err(); err != nil {
+			return "", nil, err
+		}
+		if rel == "" || Excluded(rel) {
+			continue
+		}
+		_, _, err := sourceFile(root, rel)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return "", nil, err
+		}
+
+	}
+	return root, files, nil
+}
+
+// Validate checks project eligibility without copying files or creating a snapshot.
+func Validate(ctx context.Context, r host.Runner, source string) error {
+	_, _, err := inspectSource(ctx, r, source)
+	return err
+}
+
+func Prepare(ctx context.Context, r host.Runner, source string) (Snapshot, error) {
+	root, files, err := inspectSource(ctx, r, source)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	sum := sha256.Sum256([]byte(root))
+	s := Snapshot{Source: root, Project: fmt.Sprintf("%s-%x", filepath.Base(root), sum[:6])}
+	s.Dir, err = os.MkdirTemp("", "agent-vm-project-")
+	if err != nil {
+		return s, err
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			os.RemoveAll(s.Dir)
+		}
+	}()
 	seen := map[string]bool{}
 	for _, rel := range files {
 		if err = ctx.Err(); err != nil {
@@ -124,39 +157,23 @@ func Prepare(ctx context.Context, r host.Runner, source string) (Snapshot, error
 			continue
 		}
 		seen[rel] = true
-		if !filepath.IsLocal(rel) {
-			return s, fmt.Errorf("unsafe project path")
-		}
 		src := filepath.Join(root, rel)
-		info, err := os.Lstat(src)
+		info, target, err := sourceFile(root, rel)
 		if os.IsNotExist(err) {
 			continue
 		}
 		if err != nil {
 			return s, err
 		}
-		if info.IsDir() {
-			return s, fmt.Errorf("nested repositories/directories in file list unsupported: %s", rel)
-		}
 		dst := filepath.Join(s.Dir, rel)
 		if err = os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
 			return s, err
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			target, err := os.Readlink(src)
-			if err != nil {
-				return s, err
-			}
-			if filepath.IsAbs(target) || !filepath.IsLocal(filepath.Join(filepath.Dir(rel), target)) {
-				return s, fmt.Errorf("symlink escapes project: %s", rel)
-			}
 			if err = os.Symlink(target, dst); err != nil {
 				return s, err
 			}
 			continue
-		}
-		if !info.Mode().IsRegular() {
-			return s, fmt.Errorf("unsupported special file: %s", rel)
 		}
 		if err = copyFile(src, dst, info.Mode()); err != nil {
 			return s, err
@@ -175,6 +192,36 @@ func Prepare(ctx context.Context, r host.Runner, source string) (Snapshot, error
 	ok = true
 	return s, nil
 }
+
+// sourceFile owns path/type validation for both preflight and copying. Copying
+// rechecks after setup because the host project may have changed meanwhile.
+func sourceFile(root, rel string) (fs.FileInfo, string, error) {
+	if !filepath.IsLocal(rel) {
+		return nil, "", fmt.Errorf("unsafe project path")
+	}
+	info, err := os.Lstat(filepath.Join(root, rel))
+	if err != nil {
+		return nil, "", err
+	}
+	if info.IsDir() {
+		return nil, "", fmt.Errorf("nested repositories/directories in file list unsupported: %s", rel)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(filepath.Join(root, rel))
+		if err != nil {
+			return nil, "", err
+		}
+		if filepath.IsAbs(target) || !filepath.IsLocal(filepath.Join(filepath.Dir(rel), target)) {
+			return nil, "", fmt.Errorf("symlink escapes project: %s", rel)
+		}
+		return info, target, nil
+	}
+	if !info.Mode().IsRegular() {
+		return nil, "", fmt.Errorf("unsupported special file: %s", rel)
+	}
+	return info, "", nil
+}
+
 func copyFile(src, dst string, mode fs.FileMode) error {
 	in, err := os.Open(src)
 	if err != nil {

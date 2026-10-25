@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"agent-vm/internal/cli"
@@ -54,5 +55,29 @@ func TestVersionDoesNotCreateDataOrLoadBrokenConfig(t *testing.T) {
 	u.OK(t, cmd.Execute())
 	u.Equal(t, output.String(), "agent-vm version "+cli.Version+"\n")
 	_, err := os.Stat(filepath.Join(dir, "data"))
+	u.Equal(t, os.IsNotExist(err), true)
+}
+
+func TestConfigShowExposesUsableDefaultsWithoutCreatingState(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "absent.toml")
+	statePath := filepath.Join(dir, "state")
+	cmd := cli.New()
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"--config", configPath, "--data-dir", statePath, "config", "show", "--json"})
+	u.OK(t, cmd.Execute())
+	var resolved struct {
+		IdentityFile string
+		Linux        struct{ BaseImage string }
+		MacOS        struct{ BaseImage string }
+	}
+	u.OK(t, json.Unmarshal(output.Bytes(), &resolved))
+	u.Equal(t, strings.Contains(resolved.Linux.BaseImage, "ubuntu@sha256:"), true)
+	u.Equal(t, strings.Contains(resolved.MacOS.BaseImage, "macos-golden-gate-base@sha256:"), true)
+	u.Equal(t, resolved.IdentityFile, filepath.Join(statePath, "ssh", "id_ed25519"))
+	_, err := os.Stat(configPath)
+	u.Equal(t, os.IsNotExist(err), true)
+	_, err = os.Stat(statePath)
 	u.Equal(t, os.IsNotExist(err), true)
 }

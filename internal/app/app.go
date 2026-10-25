@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,7 +95,7 @@ func (a *App) Ensure(ctx context.Context, o Selection) (model.VM, error) {
 			return a.startLocked(ctx, v)
 		}
 	}
-	v, err := a.createLocked(ctx, name, os)
+	v, err := a.createLocked(ctx, name, os, nil)
 	if err != nil {
 		return v, err
 	}
@@ -112,9 +113,9 @@ func (a *App) Create(ctx context.Context, name string, os model.OS) (model.VM, e
 		return model.VM{}, err
 	}
 	defer unlock()
-	return a.createLocked(ctx, name, os)
+	return a.createLocked(ctx, name, os, nil)
 }
-func (a *App) createLocked(ctx context.Context, name string, os model.OS) (model.VM, error) {
+func (a *App) createLocked(ctx context.Context, name string, os model.OS, progress io.Writer) (model.VM, error) {
 	v := model.VM{ID: model.ID(), Name: name, OS: os, Image: a.Config.Guest(os).BaseImage, Provision: ProvisionVersion, State: "creating", Created: time.Now().UTC()}
 	if err := model.ValidName(name); err != nil {
 		return v, err
@@ -132,10 +133,15 @@ func (a *App) createLocked(ctx context.Context, name string, os model.OS) (model
 	if _, ok := live[name]; ok {
 		return v, fmt.Errorf("Tart VM %q already exists; refusing automatic adoption", name)
 	}
+	if a.Config.Builtin(os) {
+		if err = a.writeSetup(v, setupState{Image: v.Image, Agents: map[string]string{}}); err != nil {
+			return v, err
+		}
+	}
 	if err = a.Store.AddVM(ctx, v); err != nil {
 		return v, err
 	}
-	if err = a.Tart.Clone(ctx, v.Image, name, a.Config.Guest(os)); err != nil {
+	if err = a.Tart.Clone(ctx, v.Image, name, a.Config.Guest(os), progress); err != nil {
 		return v, fmt.Errorf("creation incomplete; ownership intent retained, use start to recover or delete --yes: %w", err)
 	}
 	v.State = "stopped"
@@ -166,7 +172,7 @@ func (a *App) startLocked(ctx context.Context, v model.VM) (model.VM, error) {
 		if v.State != "creating" {
 			return v, fmt.Errorf("owned VM %s is missing from Tart; history may be lost; refusing replacement", v.Name)
 		}
-		if err = a.Tart.Clone(ctx, v.Image, v.Name, a.Config.Guest(v.OS)); err != nil {
+		if err = a.Tart.Clone(ctx, v.Image, v.Name, a.Config.Guest(v.OS), nil); err != nil {
 			return v, err
 		}
 	} else if v.State == "creating" && !t.Running {
@@ -324,7 +330,7 @@ func (a *App) Connection(ctx context.Context, v model.VM, ready bool) (guest.SSH
 	if err != nil {
 		return guest.SSH{}, err
 	}
-	s := guest.SSH{Runner: a.Runner, Data: a.Data, Identity: a.Config.IdentityFile, User: a.Config.Guest(v.OS).User, IP: ip, VM: v}
+	s := guest.SSH{Runner: a.Runner, Data: a.Data, Identity: a.Config.Effective(a.Data).IdentityFile, User: a.Config.Guest(v.OS).User, IP: ip, VM: v}
 	if ready {
 		c, cancel := context.WithTimeout(ctx, time.Duration(a.Config.BootSeconds)*time.Second)
 		defer cancel()

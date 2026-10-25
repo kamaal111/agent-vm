@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -127,6 +129,31 @@ func (s SSH) Trust(ctx context.Context, fingerprint string) error {
 	if len(fields) < 2 || fields[1] != fingerprint {
 		return fmt.Errorf("host-key fingerprint does not match independently verified fingerprint")
 	}
+	return s.EnrollPublicKey(ctx, string(b), false)
+}
+
+// EnrollPublicKey accepts a key obtained through the local Tart channel or
+// independently verified by Trust. An identical key is safe on bootstrap retry.
+func (s SSH) EnrollPublicKey(ctx context.Context, publicKey string, retry bool) error {
+	var key string
+	for _, line := range strings.Split(strings.TrimSpace(publicKey), "\n") {
+		f := strings.Fields(line)
+		for i, field := range f {
+			if field == "ssh-ed25519" && i+1 < len(f) {
+				decoded, err := base64.StdEncoding.DecodeString(f[i+1])
+				if err != nil || len(decoded) != 51 || binary.BigEndian.Uint32(decoded[:4]) != 11 || string(decoded[4:15]) != "ssh-ed25519" || binary.BigEndian.Uint32(decoded[15:19]) != 32 {
+					return fmt.Errorf("invalid ed25519 public host key")
+				}
+				if key != "" {
+					return fmt.Errorf("expected exactly one ed25519 public host key")
+				}
+				key = "ssh-ed25519 " + f[i+1]
+			}
+		}
+	}
+	if key == "" {
+		return fmt.Errorf("no ed25519 host key returned")
+	}
 	unlock, err := host.Lock(ctx, filepath.Join(s.Data, "locks", "known-hosts.lock"))
 	if err != nil {
 		return err
@@ -137,26 +164,21 @@ func (s SSH) Trust(ctx context.Context, fingerprint string) error {
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	if strings.Contains(string(existing), s.alias()+" ") {
-		return fmt.Errorf("VM already enrolled; remove only its entry after independently verifying a deliberate host-key rotation")
-	}
-	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
-	var entry string
-	for _, line := range lines {
+	entry := s.alias() + " " + key
+	for _, line := range strings.Split(string(existing), "\n") {
 		f := strings.Fields(line)
-		if len(f) == 3 && f[1] == "ssh-ed25519" {
-			entry = s.alias() + " " + f[1] + " " + f[2] + "\n"
-			break
+		if len(f) > 0 && f[0] == s.alias() {
+			if retry && line == entry {
+				return nil
+			}
+			return fmt.Errorf("VM host key already enrolled; refusing replacement; verify deliberate rotation independently")
 		}
 	}
-	if entry == "" {
-		return fmt.Errorf("no ed25519 host key returned")
-	}
-	f, err = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
-	_, err = f.WriteString(entry)
+	_, err = f.WriteString(entry + "\n")
 	closeErr := f.Close()
 	if err != nil {
 		return err

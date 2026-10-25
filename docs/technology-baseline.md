@@ -24,14 +24,14 @@ Build tooling: [govulncheck](https://go.dev/security/vuln/) `golang.org/x/vuln/c
 
 | Tool | Verified current stable/target | Local testing |
 |---|---|---|
-| Tart | 2.41.1 | Missing; fake-command testing only |
+| Tart | 2.41.1 | Private 2.41.1 copy verified; real Linux/macOS 27 bootstrap tested |
 | tmux | 3.8 | Installed 3.8; local integration check |
 | OpenSSH | upstream 10.6p1 | Apple's installed 10.3p1; retain system OpenSSH |
-| Codex | 0.164.0 (`rust-v0.164.0`) | Native CLI/auth/VM integration untested |
-| Claude Code | 2.1.310 | Native CLI/auth/VM integration untested |
-| Cursor Agent | 2026.10.22-27dcf5f | Native CLI/auth/VM integration untested |
-| Node (explicit guest preparation only) | 26.12.1 | Not installed/tested; [official release index](https://nodejs.org/dist/index.json) |
-| npm (explicit guest preparation only) | 12.2.1 | Not installed/tested; [official registry](https://registry.npmjs.org/npm/12.2.1) |
+| Codex | 0.164.0 (`rust-v0.164.0`) | Linux/macOS install/version/missing-auth tested; account login untested |
+| Claude Code | 2.1.310 | Linux/macOS install/version/missing-auth tested; account login untested |
+| Cursor Agent | 2026.10.22-27dcf5f | Linux install/version/missing-auth tested; macOS waits for guest keychain unlock |
+| Node (guest bootstrap/preparation) | 26.12.1 | Installed/verified in disposable Linux/macOS guests; [official release index](https://nodejs.org/dist/index.json) |
+| npm (guest bootstrap/preparation) | 12.2.1 | Installed/verified in disposable Linux/macOS guests; [official registry](https://registry.npmjs.org/npm/12.2.1) |
 
 Targets are deliberately strict initially: Tart >=2.41.1 within major 2, tmux >=3.8 within major 3, system OpenSSH >=10.3 within major 10; harnesses use the recorded version contract. Later versions require explicit baseline review rather than silent behavioral drift. Native capability checks supplement versions.
 
@@ -46,3 +46,5 @@ SSH: batch-mode key authentication, dedicated known_hosts, stable per-VM HostKey
 No image was downloaded or tested. No default floating image reference is supplied. Configure a local prepared image name with a versioned manifest, or OCI `@sha256:` digest. Separate Linux/macOS preparation workflows record source digest, provisioning version and exact agent versions. Local images can be replaced outside this tool, so preserve their manifest and immutable exported digest for reproducible release builds.
 
 [Tart 2.41.1 license](https://github.com/openai/tart/blob/2.41.1/LICENSE) is FSL-1.1-ALv2, with permitted internal use and competing-use restrictions; it is not an unrestricted Apache release today. This project invokes a separately installed Tart and does not redistribute it. macOS images require Apple hardware and applicable Apple software license rights; obtain them yourself. Codex is Apache-2.0; Claude Code and Cursor distributions and account access have vendor terms. Do not redistribute their binaries or preauthenticated images without checking those terms. Go libraries have permissive licenses; preserve notices when distributing the binary. See agent-support.md for per-agent sources and limitations.
+
+Managed setup pins image digests, direct archive checksums, and agent versions in `internal/bootstrap/manifest.json`. Missing or incompatible system Tart is handled with a private installation from the pinned release archive because Homebrew may lag that version. Shared guest installation explicitly runs Claude's pinned postinstall under npm 12 and links Cursor's `cursor-agent` launcher. Prerequisite receipts prevent package upgrades when adding another agent. See verification.md for the dated live matrix.

@@ -87,12 +87,30 @@ def main(op, r):
         for executable in ["git", "tmux", "python3", r["executable"]]:
             if not shutil.which(executable):
                 raise ValueError("missing executable " + executable + "; prepare/rebuild the configured base image")
-        return {"tmux": run(["tmux", "-V"]), "agent": run([r["executable"], "--version"])}
+        if r["executable"] == "agent" and platform.system() == "Darwin":
+            version = subprocess.run(["agent", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+            if version.returncode != 0:
+                if b"Your macOS login keychain is locked" in version.stdout + version.stderr:
+                    return {"keychain_locked": True}
+                raise ValueError("Cursor version check failed; use the guest shell to inspect login")
+            agent_version = version.stdout.decode().strip()
+        else:
+            agent_version = run([r["executable"], "--version"])
+        return {"tmux": run(["tmux", "-V"]), "agent": agent_version}
     if op == "auth":
         commands = {"codex": ["codex", "login", "status"], "claude": ["claude", "auth", "status"], "cursor": ["agent", "status", "--format", "json"]}
         command = credential_prefix(r["agent"]) + "exec " + shlex.join(commands[r["agent"]])
-        result = subprocess.run(["sh", "-c", command], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return {"authenticated": result.returncode == 0, "verified": r["agent"] != "cursor"}
+        result = subprocess.run(["sh", "-c", command], stdout=subprocess.PIPE if r["agent"] == "cursor" else subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+        if r["agent"] == "cursor":
+            try:
+                status = json.loads(result.stdout)
+            except (ValueError, TypeError):
+                raise ValueError("Cursor auth status was not valid JSON; use the guest shell to inspect login")
+            authenticated = status.get("isAuthenticated") if isinstance(status, dict) else None
+            if not isinstance(authenticated, bool):
+                raise ValueError("Cursor auth status has an unsupported schema; use the guest shell to inspect login")
+            return {"authenticated": authenticated, "verified": True}
+        return {"authenticated": result.returncode == 0, "verified": True}
     if op == "home":
         return {"home": str(Path.home())}
     if op == "provision":
@@ -146,7 +164,9 @@ try:
     os.umask(0o077)
     print(json.dumps(main(sys.argv[1], json.load(sys.stdin))))
 except Exception as exc:
-    if isinstance(exc, subprocess.CalledProcessError):
+    if isinstance(exc, subprocess.TimeoutExpired):
+        print(json.dumps({"error": "guest command timed out; use shell to inspect installation/authentication"}))
+    elif isinstance(exc, subprocess.CalledProcessError):
         print(json.dumps({"error": "guest command failed with status " + str(exc.returncode) + "; use shell to inspect installation/authentication"}))
     else:
         print(json.dumps({"error": str(exc)}))

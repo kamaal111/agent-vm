@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +22,8 @@ type RunOptions struct {
 	Selection                   Selection
 	Agent, Name, Prompt, Source string
 	Args                        []string
+	ApproveSetup                func(SetupPlan) error
+	Progress                    io.Writer
 }
 type Process struct {
 	Status   string `json:"status"`
@@ -32,18 +35,28 @@ type Discovery struct {
 	Limitation string `json:"limitation"`
 }
 
-func (a *App) checkAgent(ctx context.Context, c guest.SSH, adapter agent.Adapter) error {
+func (a *App) checkAgentTools(ctx context.Context, c guest.SSH, adapter agent.Adapter) error {
 	var v struct {
-		Tmux  string `json:"tmux"`
-		Agent string `json:"agent"`
+		Tmux           string `json:"tmux"`
+		Agent          string `json:"agent"`
+		KeychainLocked bool   `json:"keychain_locked"`
 	}
 	if err := c.Control(ctx, "check", map[string]string{"executable": adapter.Executable}, &v); err != nil {
 		return err
+	}
+	if v.KeychainLocked && adapter.Name == "cursor" && c.VM.OS == model.MacOS {
+		return &LoginRequired{Agent: adapter.Name, VM: c.VM.Name, UnlockKeychain: true}
 	}
 	if err := host.CheckVersion(v.Tmux, "3.8", 3); err != nil {
 		return fmt.Errorf("guest tmux: %w", err)
 	}
 	if err := adapter.CheckVersion(v.Agent); err != nil {
+		return err
+	}
+	return nil
+}
+func (a *App) checkAgent(ctx context.Context, c guest.SSH, adapter agent.Adapter) error {
+	if err := a.checkAgentTools(ctx, c, adapter); err != nil {
 		return err
 	}
 	var auth struct {
@@ -54,7 +67,7 @@ func (a *App) checkAgent(ctx context.Context, c guest.SSH, adapter agent.Adapter
 		return err
 	}
 	if auth.Verified && !auth.Authenticated {
-		return fmt.Errorf("%s is not authenticated; run agent-vm shell %s and complete guest login (or configure its guest credential env file)", adapter.Name, c.VM.Name)
+		return &LoginRequired{Agent: adapter.Name, VM: c.VM.Name}
 	}
 	return nil
 }
@@ -71,15 +84,27 @@ func (a *App) Run(ctx context.Context, o RunOptions) (model.Session, error) {
 			return model.Session{}, err
 		}
 	}
-	if _, _, err = Select(a.Config, o.Selection); err != nil {
+	if err = project.Validate(ctx, a.Runner, o.Source); err != nil {
 		return model.Session{}, err
 	}
-	snapshot, err := project.Prepare(ctx, a.Runner, o.Source)
+	plan, err := a.PlanSetup(ctx, o.Selection, o.Agent)
 	if err != nil {
 		return model.Session{}, err
 	}
-	defer os.RemoveAll(snapshot.Dir)
-	v, err := a.Ensure(ctx, o.Selection)
+	if plan.Needed() {
+		if o.ApproveSetup == nil {
+			return model.Session{}, fmt.Errorf("setup needed; rerun with --yes or use an interactive terminal")
+		}
+		if err = o.ApproveSetup(plan); err != nil {
+			return model.Session{}, err
+		}
+	}
+	var v model.VM
+	if plan.Managed {
+		v, err = a.Setup(ctx, plan, o.Progress)
+	} else {
+		v, err = a.Ensure(ctx, plan.Selection)
+	}
 	if err != nil {
 		return model.Session{}, err
 	}
@@ -98,6 +123,11 @@ func (a *App) Run(ctx context.Context, o RunOptions) (model.Session, error) {
 	if err = a.checkAgent(ctx, c, adapter); err != nil {
 		return model.Session{}, err
 	}
+	snapshot, err := project.Prepare(ctx, a.Runner, o.Source)
+	if err != nil {
+		return model.Session{}, err
+	}
+	defer os.RemoveAll(snapshot.Dir)
 	var home struct {
 		Home string `json:"home"`
 	}

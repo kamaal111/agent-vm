@@ -8,6 +8,6 @@ go test -race ./...
 go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 mkdir -p bin
 CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -o bin/agent-vm ./cmd/agent-vm
-python3 -c 'import ast,pathlib; ast.parse(pathlib.Path("internal/guest/scripts/control.py").read_text())'
+python3 -m py_compile internal/guest/scripts/control.py scripts/install_agents.py
 uv run --locked pytest
 for script in scripts/*.sh; do sh -n "$script"; done

@@ -6,10 +6,10 @@ A Go CLI for persistent Linux ARM64 and macOS ARM64 Tart VMs on an Apple Silicon
 
 ## Build and install
 
-Use Go **1.27.3** ([verified versions and sources](docs/technology-baseline.md)). The executable builds without CGO:
+Use Go **1.27.3** ([verified versions and sources](docs/technology-baseline.md)) and `just` for the repository task commands. Run `just` to list available commands. The executable builds without CGO:
 
 ```sh
-make build
+just build
 install -m 755 bin/agent-vm /usr/local/bin/agent-vm
 agent-vm --help
 agent-vm completion zsh > /path/on/your/fpath/_agent-vm
@@ -107,9 +107,9 @@ Use `--detach` and explicit arguments for noninteractive launch; use `--json` fo
 ## Development
 
 ```sh
-make test
-make check
+just test
+just check
 AGENT_VM_TMUX_TEST=1 go test ./internal/guest -run TestTmux -v
 ```
 
-`make check` runs formatting verification, module verification, vet, tests, race checks, pinned govulncheck and a CGO-free macOS ARM64 build. The optional tmux check uses a temporary home and socket. Real VM checks are [explicitly opt-in](docs/live-validation.md). [Architecture](docs/architecture.md), [implementation plan](docs/implementation-plan.md), [baseline](docs/technology-baseline.md) and [update workflow](docs/base-images.md#updates) explain the boundaries. Dependabot updates modules and immutable CI action references; updates must pass compatibility tests and baseline review.
+`just check` runs formatting verification, module verification, vet, tests, race checks, pinned govulncheck and a CGO-free macOS ARM64 build. The optional tmux check uses a temporary home and socket. Real VM checks are [explicitly opt-in](docs/live-validation.md). [Architecture](docs/architecture.md), [implementation plan](docs/implementation-plan.md), [baseline](docs/technology-baseline.md) and [update workflow](docs/base-images.md#updates) explain the boundaries. Dependabot updates modules and immutable CI action references; updates must pass compatibility tests and baseline review.

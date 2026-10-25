@@ -3,6 +3,13 @@
 Release Please opens a release PR from Conventional Commits on `main`.
 Merge it to publish a versioned macOS ARM64 archive and checksums.
 
+Versions advance automatically from the last published release: `fix:` commits
+bump the patch version and `feat:` commits bump the minor version. Release Please
+updates `version.txt`, `.release-please-manifest.json`, and the changelog in its PR.
+Keep `release-as` out of the normal configuration. If used to override a release
+version temporarily, remove it after that release PR merges; leaving it set makes
+subsequent releases reuse the same version and fail when the tag already exists.
+
 ## Setup
 
 In both agent-vm and homebrew-tap, enable **Settings → Actions → General →
@@ -35,3 +42,7 @@ gh workflow run release.yml --repo kamaal111/agent-vm -f release_tag=v0.1.0
 
 This retries missing uploads without replacing existing assets. Once it succeeds,
 run the tap updater again.
+
+Recovery builds the existing tag; it does not include newer commits on `main`.
+Release new changes through the next Release Please PR, preserving published tags
+and assets.

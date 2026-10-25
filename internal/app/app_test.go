@@ -24,6 +24,9 @@ type machine struct {
 	vms                      map[string]tart.VM
 	clones, starts, launches int
 	failSet                  bool
+	authMissing              bool
+	agentVersion             string
+	keychainLocked           bool
 	process                  string
 	history                  bool
 	lastArgv                 []string
@@ -83,9 +86,16 @@ func (m *machine) Run(ctx context.Context, c host.Command) ([]byte, error) {
 			case strings.HasSuffix(script, "'provision'"):
 				return []byte(`{"tmux":"tmux 3.8"}`), nil
 			case strings.HasSuffix(script, "'check'"):
-				return []byte(`{"tmux":"tmux 3.8","agent":"codex-cli 0.164.0"}`), nil
+				if m.keychainLocked {
+					return []byte(`{"keychain_locked":true}`), nil
+				}
+				version := m.agentVersion
+				if version == "" {
+					version = "0.164.0"
+				}
+				return json.Marshal(map[string]string{"tmux": "tmux 3.8", "agent": version})
 			case strings.HasSuffix(script, "'auth'"):
-				return []byte(`{"authenticated":true,"verified":true}`), nil
+				return json.Marshal(map[string]bool{"authenticated": !m.authMissing, "verified": true})
 			case strings.HasSuffix(script, "'home'"):
 				return []byte(`{"home":"/home/admin"}`), nil
 			case strings.HasSuffix(script, "'state'"):

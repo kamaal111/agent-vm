@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"agent-vm/internal/app"
@@ -85,7 +86,7 @@ func configCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return o.print(cmd, v)
+		return o.print(cmd, v.Effective(o.data))
 	}})
 	var defaults bool
 	init := &cobra.Command{Use: "init", Short: "Create configuration using setup prompts", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
@@ -99,26 +100,38 @@ func configCommand(o *options) *cobra.Command {
 		}
 		return config.Write(o.config, v)
 	}}
-	init.Flags().BoolVar(&defaults, "defaults", false, "Write defaults without prompting; configure images and key before running")
+	init.Flags().BoolVar(&defaults, "defaults", false, "Write defaults without prompting; run guides image and SSH setup")
 	c.AddCommand(init)
 	return c
 }
 func doctorCommand(o *options) *cobra.Command {
-	return &cobra.Command{Use: "doctor", Short: "Check host prerequisites without logging in or downloading images", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	var osName string
+	c := &cobra.Command{Use: "doctor", Short: "Check prerequisites and setup readiness without installing or downloading", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		return o.with(cmd, func(a *app.App) error {
-			r := a.Doctor(cmd.Context())
-			if err := o.print(cmd, r); err != nil {
+			selected := a.Config.DefaultOS
+			if osName != "" {
+				var err error
+				selected, err = model.ParseOS(osName)
+				if err != nil {
+					return err
+				}
+			}
+			checks := a.DoctorOS(cmd.Context(), selected)
+			if err := o.print(cmd, checks); err != nil {
 				return err
 			}
-			for _, c := range r {
-				if !c.OK {
+			for _, check := range checks {
+				if !check.OK {
 					return fmt.Errorf("doctor found missing or unsupported prerequisites")
 				}
 			}
 			return nil
 		})
 	}}
+	c.Flags().StringVar(&osName, "os", "", "Check linux or macos (defaults to configured OS)")
+	return c
 }
+
 func browse(ctx context.Context, a *app.App, jsonMode bool) error {
 	if jsonMode {
 		return fmt.Errorf("picker does not support --json; use sessions list --json or an explicit session ID")
@@ -194,7 +207,7 @@ func handoffCommand(o *options, name string, resume bool) *cobra.Command {
 }
 func runCommand(o *options) *cobra.Command {
 	var vm, osName, name, prompt, source string
-	var fresh, detach bool
+	var fresh, detach, yes bool
 	c := &cobra.Command{Use: "run [codex|claude|cursor] [flags] [-- harness-args...]", Short: "Start a fresh conversation in an isolated guest project", Args: cobra.ArbitraryArgs}
 	c.Flags().StringVar(&vm, "vm", "", "Owned VM name")
 	c.Flags().StringVar(&osName, "os", "", "linux or macos")
@@ -203,6 +216,7 @@ func runCommand(o *options) *cobra.Command {
 	c.Flags().StringVar(&prompt, "prompt", "", "Initial prompt (never shell-evaluated)")
 	c.Flags().StringVar(&source, "project", ".", "Source project directory")
 	c.Flags().BoolVar(&detach, "detach", false, "Launch without handing off the terminal")
+	c.Flags().BoolVar(&yes, "yes", false, "Approve required image downloads, guest setup, and missing Tart installation")
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		dash := cmd.ArgsLenAtDash()
 		if len(args) > 1 && dash != 1 && dash != 0 {
@@ -225,13 +239,29 @@ func runCommand(o *options) *cobra.Command {
 				selected = args[0]
 				extra = args[1:]
 			}
-			var s model.Session
-			err := ui.Progress(cmd.Context(), "Snapshotting project, booting VM and starting agent", !o.json, func(ctx context.Context) error {
-				var err error
-				s, err = a.Run(ctx, app.RunOptions{Selection: app.Selection{VM: vm, OS: model.OS(osName), New: fresh}, Agent: selected, Name: name, Prompt: prompt, Source: source, Args: extra})
-				return err
-			})
+			approve := func(p app.SetupPlan) error {
+				fmt.Fprintln(cmd.ErrOrStderr(), p.Summary())
+				if yes {
+					return nil
+				}
+				if o.json || !ui.Interactive() {
+					return fmt.Errorf("setup needed; rerun with --yes to approve these actions")
+				}
+				return ui.ConfirmSetup(cmd.Context())
+			}
+			s, err := a.Run(cmd.Context(), app.RunOptions{Selection: app.Selection{VM: vm, OS: model.OS(osName), New: fresh}, Agent: selected, Name: name, Prompt: prompt, Source: source, Args: extra, ApproveSetup: approve, Progress: cmd.ErrOrStderr()})
 			if err != nil {
+				var login *app.LoginRequired
+				if errors.As(err, &login) {
+					prefix := []string{"agent-vm"}
+					if cmd.Flags().Changed("config") {
+						prefix = append(prefix, "--config", o.config)
+					}
+					if cmd.Flags().Changed("data-dir") {
+						prefix = append(prefix, "--data-dir", o.data)
+					}
+					return errors.New(login.Instructions(prefix))
+				}
 				return err
 			}
 			if detach {

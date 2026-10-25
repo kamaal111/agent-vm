@@ -13,7 +13,7 @@ Verified against official documentation and tagged source on 2026-10-24. **No ve
 | Newer/other history layouts | Fail explicitly; bind native ID/file manually | Fail explicitly; bind native ID/file manually | No verified structured saved-history inventory; `ls` is interactive and is not scraped |
 | Subscription auth | Guest ChatGPT sign-in, or explicit file auth-cache import | Guest `claude auth login` | Guest `agent login` |
 | API credentials | Guest `OPENAI_API_KEY` login via stdin | Guest `ANTHROPIC_API_KEY` environment | Guest `CURSOR_API_KEY` environment |
-| Auth preflight | `codex login status`, success exit code | `claude auth status`, success exit code | `agent status --format json` command available, but authentication schema/exit semantics remain unverified; native CLI decides |
+| Auth preflight | `codex login status`, success exit code | `claude auth status`, success exit code | `agent status --format json`, explicit boolean `isAuthenticated`; exit code 0 alone is insufficient; unknown schemas fail clearly |
 | Linux/macOS live validation | Pending / pending | Pending / pending | Pending / pending |
 
 The Codex JSONL reader is a narrowly pinned format reader, **not a stable public discovery API**. Codex 0.164.0 also supports newer paginated history; automatic association for that layout is not implemented. Its app-server API is marked experimental in tagged CLI source, so this release does not introduce that API or require a daemon. This is a material first-release limitation: where JSONL is absent, obtain the exact ID through the native CLI and bind its existing guest history file. Do not select “latest” as an identity substitute.

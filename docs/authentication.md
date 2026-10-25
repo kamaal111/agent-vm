@@ -1,8 +1,10 @@
 # Authentication and credentials
 
-Configuration contains explicit sources, never secret values. The default source for each agent is **guest**: perform its native login in the persistent VM. No host configuration directory, Keychain entry, shell environment or SSH agent is forwarded into the guest. Public SSH authorization keys belong in prepared images; private host SSH keys stay on the host.
+Configuration contains explicit sources, never secret values. The default source for each agent is **guest**: perform its native login in the persistent VM. No host configuration directory, Keychain entry, shell environment or SSH agent is forwarded into the guest. Managed default-image setup authorizes a dedicated public SSH key through Tart; custom images require manual public-key authorization. Private host SSH keys stay on the host.
 
 All code tests use synthetic data and temporary homes. Development does not inspect personal credential files or run a login flow.
+
+For managed default images, `run` installs the selected agent and prints login instructions if authentication is missing. Complete the login below, exit the shell, and retry using the same `--vm` name. Never repeat `--new` merely to retry login. Explicit config/data paths are included in generated instructions.
 
 ## Guest login
 
@@ -18,6 +20,10 @@ agent status --format json
 ```
 
 Follow vendor-supported headless instructions. Codex's device-code flow is currently documented as beta and is not automated or required by this release. A supported stable fallback is browser callback forwarding (`ssh -L 1455:localhost:1455` through a connection you explicitly establish) or an explicit file-cache import. Claude can print a login URL/code for SSH use. Cursor supports printing a URL with `NO_OPEN_BROWSER=1`. Actual subscription/account entitlement and Linux/macOS credential-store behavior need user live validation.
+
+### Cursor on headless macOS
+
+The pinned Cursor launcher can refuse even `--version` while the guest login keychain is locked. Managed setup retains the verified archive installation and prints guest-shell instructions to run `security unlock-keychain`, then `NO_OPEN_BROWSER=1 agent login`. Enter the guest keychain password interactively. Retry with the same VM name; no reinstallation or additional setup approval is required. Native version verification completes after the keychain is available. The tool preserves Cursor's native credential-store setting.
 
 ## API keys inside guests
 

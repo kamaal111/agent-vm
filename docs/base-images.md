@@ -1,8 +1,29 @@
 # Reproducible base images
 
-No public image digest has been live-validated here. `base_image` is deliberately unset by default. You must select an immutable ARM64 image digest or a versioned local prepared image. `agent-vm` never silently pulls `latest`; OCI references without `@sha256:` are rejected. A local image is an operator-managed reference: keep its manifest and never mutate/reuse its versioned name.
+## Built-in upstream defaults
+
+Normal `run` needs no prepared image or config file. Without an image override, the tool selects pinned upstream Cirrus Labs Ubuntu 24.04 and macOS 27 Golden Gate base images. After one confirmation, managed setup configures SSH and installs the requested agent inside the new guest. The image references and direct archive checksums are in `internal/bootstrap/manifest.json`; tool adapters retain their exact supported agent versions.
+
+Pins were obtained from authenticated HTTPS registry manifests, Node's published SHASUMS256.txt, the tmux release asset digest, and downloaded Cursor archives. Cursor checksums are recorded from official HTTPS distribution, not an independently signed upstream checksum. npm verifies package integrity through its registry metadata and writes package locks in guest installation directories. OS dependency packages are resolved during setup and inventories are retained; this is not a frozen OS package snapshot.
+
+Tart caches the original upstream image. Cloning disables automatic pruning, so insufficient space fails without evicting unrelated cached images. Guest setup modifies only the owned clone, never that shared base. Host keys are generated per clone and enrolled through the local Tart control channel. Personal authentication remains guest-local. Completed setup and selected-agent versions are recorded under the private data directory; interrupted installs can be retried with the existing VM name. Completed prerequisites are reused when adding another agent rather than upgrading OS packages again.
+
+## Custom prepared images
+
+Set an explicit `base_image` to use the manual workflow below. Use an immutable ARM64 OCI digest or a versioned local prepared image. OCI references without `@sha256:` are rejected. Keep the local image's manifest and never mutate/reuse its versioned name. Existing and adopted guests without managed bootstrap metadata are never automatically converted to the built-in setup workflow.
 
 Both OS images need an unprivileged SSH account, key authorization, Python >=3.8, Git 2.x, tmux 3.8, the selected agent executables, a normal POSIX shell, tar, and outbound vendor network access. The explicit agent-installation script requires verified stable Node **26.12.1** and npm **12.2.1**; npm's engine range includes Node >=26, while Claude Code requires >=22. System packages must come from your pinned OS image/package snapshot. Record their exact versions. This project does not claim that unpinned apt/Homebrew installs are reproducible.
+
+### Manual guest setup
+
+After preparing the image, set its name/digest, guest username, and dedicated SSH identity in the optional host config. Authorize the public key inside the image before cloning. Then:
+
+```sh
+agent-vm create agent-linux --os linux
+agent-vm start agent-linux
+```
+
+Read `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256` in the trusted guest console. Enroll that exact fingerprint with `agent-vm trust agent-linux --fingerprint`, supplying the verified value, then run `agent-vm provision agent-linux` and `agent-vm shell agent-linux` for vendor login. For macOS, use `agent-macos` and `--os macos`. The host never runs the image-preparation scripts automatically for custom images.
 
 ## Linux ARM64
 

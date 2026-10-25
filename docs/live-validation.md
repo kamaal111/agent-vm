@@ -1,6 +1,17 @@
 # Opt-in real-VM validation
 
-These checks **have not run** in this environment because Tart and prepared images are unavailable. They may download large images only when you explicitly choose an OCI base. Use disposable test VMs and synthetic projects. Do not run personal logins during automated development tests.
+This is the complete manual validation matrix. Executed portions and remaining gaps are recorded in [verification.md](verification.md). Use disposable test VMs and synthetic projects. Default setup downloads pinned upstream images after approval; the macOS 27 base is approximately 34 GB compressed. Do not run personal logins during automated development tests.
+
+## Managed first-run setup
+
+Use an isolated `TART_HOME`, absent config path, private data directory, and synthetic project. Keep those overrides on every command. Use a supported Tart binary on PATH or exercise the private installation path with Tart absent from PATH; do not upgrade the developer's host installation just to run validation.
+
+1. Run `run codex --detach --json` without `--yes`. Verify it reports required setup without creating a VM/key or producing JSON stdout. Repeat with `--yes`; verify the exact pinned image, per-clone SSH key, selected-agent installation, and missing-login instructions.
+2. Retry without `--yes`. Verify no additional clone, installation, or trust enrollment. Complete guest login only with an explicitly approved test account, then verify a conversation launches.
+3. Run Claude and Cursor in that same managed guest. Verify only the newly requested agent is installed, previous tools remain, and all three missing-auth cases stop before creating a workspace/session.
+4. Interrupt clone/configuration, boot, SSH bootstrap, and tool installation in disposable runs. Retry using the reported VM name; verify stable identity and exactly one VM. Try two concurrent runs against the same default VM.
+5. Repeat on `--os macos`; verify `sw_vers` reports macOS 27.x. Exercise `--new` and verify the printed retry targets the one generated VM rather than allocating another.
+6. Stop/start both guests, verify keys/tool inventories persist, and exercise custom-image/manual trust separately. Test wrong image-tool/Tart archive checksums and unavailable guest-agent handling without bypasses.
 
 ## Prerequisites
 

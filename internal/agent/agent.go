@@ -4,22 +4,30 @@ import (
 	"fmt"
 	"strings"
 
+	"agent-vm/internal/bootstrap"
 	"agent-vm/internal/model"
 )
 
 type Adapter struct{ Name, Executable, Version string }
 
 func Get(name string) (Adapter, error) {
+	pins, err := bootstrap.Pins()
+	if err != nil {
+		return Adapter{}, err
+	}
+	executable := name
 	switch name {
-	case "codex":
-		return Adapter{name, "codex", "0.164.0"}, nil
-	case "claude":
-		return Adapter{name, "claude", "2.1.310"}, nil
+	case "codex", "claude":
 	case "cursor":
-		return Adapter{name, "agent", "2026.10.22-27dcf5f"}, nil
+		executable = "agent"
 	default:
 		return Adapter{}, fmt.Errorf("unsupported agent %q: use codex, claude or cursor", name)
 	}
+	version := pins.Agents[name]
+	if version == "" {
+		return Adapter{}, fmt.Errorf("missing version contract for %s", name)
+	}
+	return Adapter{Name: name, Executable: executable, Version: version}, nil
 }
 func (a Adapter) CheckVersion(s string) error {
 	match := false

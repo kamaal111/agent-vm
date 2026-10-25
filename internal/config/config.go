@@ -7,13 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"agent-vm/internal/bootstrap"
 	"agent-vm/internal/model"
 	"github.com/pelletier/go-toml/v2"
 )
 
 type Guest struct {
 	DefaultVM string `toml:"default_vm"`
-	BaseImage string `toml:"base_image"`
+	BaseImage string `toml:"base_image,omitempty"`
 	User      string `toml:"user"`
 	CPU       int    `toml:"cpu"`
 	Memory    int    `toml:"memory_mib"`
@@ -21,12 +22,12 @@ type Guest struct {
 }
 type Auth struct {
 	Source string `toml:"source"`
-	File   string `toml:"file"`
+	File   string `toml:"file,omitempty"`
 }
 type Config struct {
 	DefaultOS    model.OS        `toml:"default_os"`
 	DefaultAgent string          `toml:"default_agent"`
-	IdentityFile string          `toml:"identity_file"`
+	IdentityFile string          `toml:"identity_file,omitempty"`
 	BootSeconds  int             `toml:"boot_timeout_seconds"`
 	Linux        Guest           `toml:"linux"`
 	MacOS        Guest           `toml:"macos"`
@@ -61,11 +62,29 @@ func Load(path string) (Config, error) {
 	}
 	return c, c.Validate()
 }
-func (c Config) Guest(o model.OS) Guest {
+func (c Config) Builtin(o model.OS) bool {
 	if o == model.MacOS {
-		return c.MacOS
+		return c.MacOS.BaseImage == ""
 	}
-	return c.Linux
+	return c.Linux.BaseImage == ""
+}
+func (c Config) Guest(o model.OS) Guest {
+	g := c.Linux
+	if o == model.MacOS {
+		g = c.MacOS
+	}
+	if g.BaseImage == "" {
+		g.BaseImage = bootstrap.Image(o)
+	}
+	return g
+}
+func (c Config) Effective(data string) Config {
+	c.Linux = c.Guest(model.Linux)
+	c.MacOS = c.Guest(model.MacOS)
+	if c.IdentityFile == "" {
+		c.IdentityFile = filepath.Join(data, "ssh", "id_ed25519")
+	}
+	return c
 }
 func (c Config) Validate() error {
 	if c.IdentityFile != "" && !filepath.IsAbs(c.IdentityFile) {

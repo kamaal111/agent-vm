@@ -120,3 +120,59 @@ func waitFile(ctx context.Context, path string) error {
 		}
 	}
 }
+
+func TestGuestChannelEnrollmentIsIdempotentAndRefusesReplacement(t *testing.T) {
+	dir := t.TempDir()
+	first := filepath.Join(dir, "first")
+	second := filepath.Join(dir, "second")
+	_, err := (host.Exec{}).Run(t.Context(), host.Command{Name: "ssh-keygen", Args: []string{"-q", "-t", "ed25519", "-N", "", "-f", first}})
+	u.OK(t, err)
+	_, err = (host.Exec{}).Run(t.Context(), host.Command{Name: "ssh-keygen", Args: []string{"-q", "-t", "ed25519", "-N", "", "-f", second}})
+	u.OK(t, err)
+	one, err := os.ReadFile(first + ".pub")
+	u.OK(t, err)
+	two, err := os.ReadFile(second + ".pub")
+	u.OK(t, err)
+	s := SSH{Data: dir, VM: model.VM{ID: "test-vm"}}
+	u.OK(t, s.EnrollPublicKey(t.Context(), string(one), true))
+	before, err := os.ReadFile(filepath.Join(dir, "known_hosts"))
+	u.OK(t, err)
+	u.OK(t, s.EnrollPublicKey(t.Context(), string(one), true))
+	u.Error(t, s.EnrollPublicKey(t.Context(), string(two), true))
+	after, err := os.ReadFile(filepath.Join(dir, "known_hosts"))
+	u.OK(t, err)
+	u.Equal(t, after, before)
+	u.Equal(t, strings.Count(string(after), "agent-vm-test-vm"), 1)
+}
+func TestGuestChannelRejectsMalformedPublicKeysWithoutEnrollment(t *testing.T) {
+	dir := t.TempDir()
+	s := SSH{Data: dir, VM: model.VM{ID: "test-vm"}}
+	u.Error(t, s.EnrollPublicKey(t.Context(), "ssh-ed25519 AAAA", true))
+	_, err := os.Stat(filepath.Join(dir, "known_hosts"))
+	u.Equal(t, os.IsNotExist(err), true)
+}
+
+func TestCursorAuthUsesExplicitBooleanInsteadOfSuccessfulExit(t *testing.T) {
+	home := t.TempDir()
+	bin := filepath.Join(home, "bin")
+	u.OK(t, os.Mkdir(bin, 0700))
+	path := filepath.Join(bin, "agent")
+	u.OK(t, os.WriteFile(path, []byte("#!/bin/sh\nprintf '%s\\n' '{\"status\":\"unauthenticated\",\"isAuthenticated\":false}'\n"), 0700))
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	var got map[string]bool
+	u.OK(t, json.Unmarshal(helper(t, home, "auth", map[string]string{"agent": "cursor"}), &got))
+	u.Equal(t, got["verified"], true)
+	u.Equal(t, got["authenticated"], false)
+}
+func TestCursorAuthRejectsUnsupportedStatusWithoutCredentialOutput(t *testing.T) {
+	home := t.TempDir()
+	bin := filepath.Join(home, "bin")
+	u.OK(t, os.Mkdir(bin, 0700))
+	u.OK(t, os.WriteFile(filepath.Join(bin, "agent"), []byte("#!/bin/sh\nprintf '%s\\n' '{\"accessToken\":\"synthetic-private-token\"}'\n"), 0700))
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	b := helper(t, home, "auth", map[string]string{"agent": "cursor"})
+	var got map[string]string
+	u.OK(t, json.Unmarshal(b, &got))
+	u.Equal(t, strings.Contains(got["error"], "unsupported schema"), true)
+	u.Equal(t, strings.Contains(string(b), "synthetic-private-token"), false)
+}

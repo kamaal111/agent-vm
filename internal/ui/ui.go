@@ -190,13 +190,28 @@ func Setup(ctx context.Context, c config.Config) (config.Config, error) {
 	osName := string(c.DefaultOS)
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().Title("Default guest OS").Options(huh.NewOption("Linux ARM64", "linux"), huh.NewOption("macOS ARM64", "macos")).Value(&osName),
-		huh.NewInput().Title("Dedicated SSH private key (absolute path)").Value(&c.IdentityFile),
-		huh.NewInput().Title("Prepared Linux base image (local name or OCI digest)").Value(&c.Linux.BaseImage),
-		huh.NewInput().Title("Prepared macOS base image (optional)").Value(&c.MacOS.BaseImage),
+		huh.NewInput().Title("SSH key override (optional)").Value(&c.IdentityFile),
+		huh.NewInput().Title("Linux image override (optional)").Value(&c.Linux.BaseImage),
+		huh.NewInput().Title("macOS image override (optional)").Value(&c.MacOS.BaseImage),
 	)).WithProgramOptions(tea.WithOutput(os.Stderr))
 	if err := form.RunWithContext(ctx); err != nil {
 		return c, err
 	}
 	c.DefaultOS = model.OS(osName)
 	return c, c.Validate()
+}
+
+func ConfirmSetup(ctx context.Context) error {
+	if err := Require(); err != nil {
+		return err
+	}
+	ok := false
+	form := huh.NewForm(huh.NewGroup(huh.NewConfirm().Title("Prepare this VM and install the tools listed above?").Affirmative("Set up").Negative("Cancel").Value(&ok))).WithProgramOptions(tea.WithOutput(os.Stderr))
+	if err := form.RunWithContext(ctx); err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("setup canceled")
+	}
+	return nil
 }

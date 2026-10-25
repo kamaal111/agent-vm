@@ -2,7 +2,7 @@
 
 A Go CLI for persistent Linux ARM64 and macOS ARM64 Tart VMs on an Apple Silicon Mac. Launch Codex CLI, Claude Code or Cursor Agent in independent guest project copies and persistent tmux sessions. The host is the Mac running this command.
 
-**Development release:** local automated tests and isolated tmux checks have run; real Tart guests and vendor account integrations have not. [Verification and limitations](docs/verification.md) lists the remaining live checks. Cursor history discovery and newer Codex history layouts need explicit binding; see the [support matrix](docs/agent-support.md). No images, personal credentials, or host virtualization packages are installed by building this repository.
+**Development release:** automated checks, isolated tmux checks, and real Linux/macOS 27 guest setup have run; authenticated vendor account integrations remain untested. [Verification and limitations](docs/verification.md) lists the remaining live checks. Cursor history discovery and newer Codex history layouts need explicit binding; see the [support matrix](docs/agent-support.md). No images, personal credentials, or host virtualization packages are installed by building this repository.
 
 ## Install
 
@@ -13,6 +13,8 @@ brew install kamaal111/tap/agent-vm
 ```
 
 Then follow [First setup](#first-setup) to configure Tart and your VMs.
+
+Run `agent-vm run codex` from your project directory. The first run offers to download a pinned upstream VM image, configure SSH, and install Codex. A configuration file is optional.
 
 ## Build from source
 
@@ -31,30 +33,68 @@ For release publishing, see [releases.md](docs/releases.md).
 
 ## First setup
 
-1. Install Tart 2.41.1 separately, after reviewing its license. Prepare separate credential-free images using [base-images.md](docs/base-images.md). No floating image defaults are provided.
-2. Create a dedicated SSH key: `ssh-keygen -t ed25519 -f ~/.ssh/agent-vm`. Authorize its public key in your prepared guest account. Use a key available without a password prompt for batch SSH; a passphrase-protected key may be unlocked in your host SSH agent. Only the specified identity is offered.
-3. Run `agent-vm config init`, or `agent-vm config init --defaults` for a noninteractive template. Edit `~/.config/agent-vm/config.toml`; [config.example.toml](config.example.toml) shows all options. Paths must be absolute; no shell or tilde expansion is performed.
-4. Run `agent-vm doctor`. macOS/ARM64, Tart, system SSH, Git, images and identity must be configured. Doctor does not perform personal logins or download images.
-5. Create, start and trust your first guest:
+From your project directory on an Apple Silicon Mac:
 
 ```sh
-agent-vm create agent-linux --os linux
-agent-vm start agent-linux
+agent-vm run codex
 ```
 
-Read the guest's Ed25519 SSH host-key fingerprint from its trusted Tart console (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256` in the guest). Enroll that exact fingerprint:
+Review the setup summary and confirm once. The CLI uses Ubuntu 24.04 ARM64 by default. It downloads the pinned upstream Cirrus Labs image, creates a persistent VM, generates a dedicated SSH identity, authorizes its public key, retrieves the guest host key through Tart's local channel, and installs the requested agent and prerequisites inside the guest. Private host keys never enter the guest. If system Tart is missing or too old, the same confirmation covers downloading a checksum-verified Tart release into the private data directory. Homebrew is not required for this path and the system installation is left untouched. A private Tart installation is reused by commands using the same data directory.
+
+Image downloads can be several gigabytes and guest tool installation takes time. Progress and installation diagnostics go to stderr. Canceled or failed setup preserves the owned VM; the error/progress names it so you can retry with `--vm NAME`. Unrelated Tart VMs are never adopted automatically.
+
+If Codex needs authentication, the CLI prints the guest shell and login commands:
 
 ```sh
-agent-vm trust agent-linux --fingerprint 'SHA256:the-fingerprint-you-verified'
-agent-vm provision agent-linux
 agent-vm shell agent-linux
+# Inside the guest:
+codex login
+exit
+# Back on the host:
+agent-vm run codex --vm agent-linux
 ```
 
-Complete vendor authentication **inside the guest**, then exit its shell. See [authentication.md](docs/authentication.md). New uniquely named VMs also need explicit trust enrollment; an unattended `run --new` will preserve the VM and report the missing trust prerequisite. Use `list` to find its generated name, enroll it and run with `--vm`.
+For Cursor on macOS, a locked guest login keychain is reported with `security unlock-keychain` followed by the native login command. Enter the guest keychain password at its prompt. Installation is retained and retry does not download it again; credential storage is not changed automatically.
+
+See [authentication.md](docs/authentication.md) for headless login options. No conversation is created and no project files are transferred until the agent's authentication check succeeds. Cursor status is parsed using the pinned version's explicit `isAuthenticated` boolean; a successful status-command exit alone does not mean it is logged in.
+
+For macOS 27 Golden Gate:
+
+```sh
+agent-vm run codex --os macos
+```
+
+Linux automatic setup requires macOS 14+; the macOS 27 default requires a macOS 27+ host. Both need compatible Apple Silicon hardware, supported Tart/system SSH versions, adequate storage/RAM, and outbound network access. Default image references are embedded immutable digests; upstream floating tags are never resolved during setup. Existing VMs keep their OS, installed tools, credentials, and history when defaults change.
+
+`--new` creates one uniquely named persistent VM from the selected OS image and performs the same setup. If login is needed, retry with the printed `--vm` name, omitting `--new`. Running another agent in a managed VM offers to install that agent without reinstalling agents already prepared.
+
+For unattended use, explicitly authorize setup and detach:
+
+```sh
+agent-vm run codex --yes --detach --json
+```
+
+`--detach` alone does not approve downloads or installation. Noninteractive and JSON runs never prompt; without `--yes`, missing setup returns an actionable error. Vendor authentication remains a separate guest login.
+
+### Configuration and custom images
+
+Defaults are per host/user; no project config is required or discovered. Inspect effective defaults without creating a config or SSH key:
+
+```sh
+agent-vm config show
+agent-vm doctor
+agent-vm doctor --os macos
+```
+
+Doctor checks the selected/default OS and reports missing setup separately from broken prerequisites. It does not download images or prove a guest can boot.
+
+Use `agent-vm config init --defaults` to write an optional template at `~/.config/agent-vm/config.toml`. Omit image settings to use the built-in upstream images; omit the identity setting to generate a dedicated key beneath the data directory during approved setup. The generated template omits these optional keys. Only add them when overriding a default. Edit an existing file rather than initializing it again. Explicit paths must be absolute; no tilde expansion is performed. [config.example.toml](config.example.toml) shows overrides. Use the same `--config` and `--data-dir` on subsequent commands when overriding them.
+
+For a custom prepared image, set its actual local name or immutable OCI digest in `linux.base_image` or `macos.base_image`, set its guest `user`, and configure an authorized `identity_file`. Explicit image overrides use the manual preparation and trust workflow in [base-images.md](docs/base-images.md); the tool does not install packages or alter SSH in custom/existing adopted VMs automatically.
 
 ## Conversations and persistence
 
-From the source project's directory:
+From the source project's directory (missing default-image setup is offered automatically):
 
 ```sh
 agent-vm run codex
@@ -65,7 +105,7 @@ agent-vm run                         # configured default_agent
 agent-vm run codex --detach --json   # native agent runs in guest tmux
 ```
 
-Explicit `--vm` wins; otherwise explicit `--os` selects that OS's default VM; otherwise configured default OS/default VM wins. A missing default VM is cloned, a stopped VM is booted, and a running VM is reused. `--vm` plus `--new`, or an explicit OS conflicting with an existing VM, is rejected. `--new` creates a uniquely named **persistent** VM and never changes defaults.
+Explicit `--vm` wins; otherwise explicit `--os` selects that OS's default VM; otherwise configured default OS/default VM wins. A missing default VM is prepared after setup approval, a stopped VM is booted, and a running VM is reused. `--vm` plus `--new`, or an explicit OS conflicting with an existing VM, is rejected. `--new` creates a uniquely named **persistent** VM and never changes defaults.
 
 Every `run` creates a fresh conversation and a new project snapshot. An agent exiting or the SSH connection disconnecting leaves the VM and saved native history intact. tmux survives SSH disconnects; it does not survive shutting down the VM. When an attached agent exits, the CLI reports its recorded exit code when reachable. SSH status 255 means connection failure, not proof that the agent died. Detach deliberately with tmux's `Ctrl-b d`.
 

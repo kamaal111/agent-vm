@@ -4,7 +4,7 @@ Implementation date: 2026-10-24. Host: Apple Silicon macOS, Darwin 27.0.0/ARM64.
 
 ## Automated checks
 
-The repository's aggregate check is `sh scripts/check.sh` (or `make check`). It passed gofmt verification, module checksum verification, `go vet ./...`, `go test ./...`, `go test -race ./...`, govulncheck v1.9.0 (**No vulnerabilities found**), a CGO-disabled Darwin ARM64 build, Python syntax, and shell syntax. There are 40 named tests, including one opt-in local tmux integration test run separately. The resulting `bin/agent-vm` is a Mach-O ARM64 executable.
+The repository's aggregate check is `sh scripts/check.sh` (or `just check`). It passed gofmt verification, module checksum verification, `go vet ./...`, `go test ./...`, `go test -race ./...`, govulncheck v1.9.0 (**No vulnerabilities found**), a CGO-disabled Darwin ARM64 build, Python syntax, and shell syntax. There are 40 named tests, including one opt-in local tmux integration test run separately. The resulting `bin/agent-vm` is a Mach-O ARM64 executable.
 
 Official `go list -m all` and `go mod graph` were inspected (68 modules including main, 225 edges). Initial sandboxed module-metadata lookups failed due network DNS restrictions; the same official-tool queries succeeded with network escalation. Stable releases and exact npm package engine requirements were rechecked before delivery; pins remained current. Exact direct imports and pins are in technology-baseline.md/go.mod/go.sum.
 

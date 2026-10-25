@@ -29,7 +29,7 @@ Clone images get independent disks but may initially share the base's SSH host k
 ## Updates
 
 1. Recheck [technology-baseline.md](technology-baseline.md) against official stable releases, major/module migrations, licenses and security advisories. Use `go list -m -versions` for each canonical major and `go list -m -u all`; do not assume @latest finds a new major.
-2. Update exact module/tool pins and CI Go/action references together. Run `go mod tidy`, inspect `go list -m all` / `go mod graph`, then `make check`. Dependabot supplies module/action PRs; its green tests do not replace API/baseline review.
+2. Update exact module/tool pins and CI Go/action references together. Run `go mod tidy`, inspect `go list -m all` / `go mod graph`, then `just check`. Dependabot supplies module/action PRs; its green tests do not replace API/baseline review.
 3. Review harness launch/resume/auth/discovery behavior at new tagged versions. Update adapters, scripts, tests and the support matrix together. Do not suppress the version contract just to run an unverified tool.
 4. Build **new** clean Linux/macOS images from new pinned source digests. Record new package manifests and artifact checksums. Test through [live-validation.md](live-validation.md), seal under new names/digests, then explicitly change configuration for future VMs.
 5. Existing persistent VMs retain their disks/tools/history. Changing a base image only affects future creation. Upgrade an existing VM deliberately after backup/export and version review, or create a fresh VM. Never rebuild a personal VM implicitly when resume fails.

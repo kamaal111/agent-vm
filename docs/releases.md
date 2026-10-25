@@ -8,10 +8,6 @@ Merge it to publish a versioned macOS ARM64 archive and checksums.
 In both agent-vm and homebrew-tap, enable **Settings → Actions → General →
 Workflow permissions → Allow GitHub Actions to create and approve pull requests**.
 
-For the first release, remove `release-as` from `release-please-config.json`
-in the generated release PR before merging it. That PR updates `version.txt`
-and the manifest from the unreleased `0.0.0` baseline to `0.1.0`.
-
 ## Update Homebrew
 
 Once the Release workflow has finished uploading the archive and checksums, run:
@@ -23,7 +19,7 @@ gh workflow run update-agent-vm.yml --repo kamaal111/homebrew-tap -f version=v0.
 Review and merge the formula PR it opens. You can also run the updater locally;
 see the [tap README](https://github.com/kamaal111/homebrew-tap#update-agent-vm).
 
-After the first formula PR is merged:
+Install from the tap:
 
 ```sh
 brew install kamaal111/tap/agent-vm

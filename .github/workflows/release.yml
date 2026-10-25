@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing stable release tag to recover (empty: run Release Please)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main' && inputs.release_tag == ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          token: ${{ github.token }}
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - name: Check generated release PRs
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+        run: |
+          jq -r '.[].headBranchName' <<< "$RELEASE_PRS" | while IFS= read -r branch; do
+            gh workflow run check.yml --ref "$branch"
+          done
+
+  publish:
+    needs: release
+    if: >-
+      always() && !cancelled() && github.ref == 'refs/heads/main' &&
+      (needs.release.outputs.created == 'true' ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_tag != ''))
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || needs.release.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve stable release commit
+        run: |
+          python3 scripts/release.py validate-tag "$RELEASE_TAG"
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease --jq 'if .isDraft or .isPrerelease then error("Expected published stable release") else . end'
+          git checkout --detach "refs/tags/$RELEASE_TAG"
+          test "$(cat version.txt)" = "${RELEASE_TAG#v}"
+          test "$(uname -m)" = arm64
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.3'
+          check-latest: false
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          version: '0.13.5'
+      - run: sh scripts/check.sh
+      - name: Build, verify and upload release assets
+        run: sh scripts/release.sh "$RELEASE_TAG" --publish

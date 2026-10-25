@@ -30,7 +30,7 @@ For **all six combinations**, record exact OS build, image digest, harness `--ve
 5. Finish the native conversation. Record native ID/history location. If automated discovery is unsupported (Cursor or Codex paginated layout), bind the exact ID and existing guest history file explicitly. `resume` must use that ID, continue the saved chat and preserve existing guest edits despite changes to host files.
 6. Try two simultaneous resumes; verify only one process launches. Remove/rename a disposable workspace/history file; resume must fail without a new conversation or host file transfer. Restore it explicitly.
 7. Verify native success/nonzero exit status, normal tmux detach, SSH status 255/network loss, canceled provisioning, invalid auth and missing executable/version errors remain distinct and actionable.
-8. Rename the tool session; its UUID must still resolve. Picker filtering/arrows/Enter/Escape must work in narrow Herdr tabs, with no dashboard wrapping agent output.
+8. Rename the tool session; its UUID must still resolve. Picker filtering/arrows/Enter/Escape must work in narrow terminal windows, with no dashboard wrapping agent output.
 
 ## Export, auth conflicts and cleanup
 

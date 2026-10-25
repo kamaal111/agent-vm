@@ -1,6 +1,6 @@
 # agent-vm
 
-A Go CLI for persistent Linux ARM64 and macOS ARM64 Tart VMs on an Apple Silicon Mac. Launch Codex CLI, Claude Code or Cursor Agent in independent guest project copies and persistent tmux sessions. The host is the Mac running this command, including when you SSH into a Mac mini from Herdr.
+A Go CLI for persistent Linux ARM64 and macOS ARM64 Tart VMs on an Apple Silicon Mac. Launch Codex CLI, Claude Code or Cursor Agent in independent guest project copies and persistent tmux sessions. The host is the Mac running this command.
 
 **Development release:** local automated tests and isolated tmux checks have run; real Tart guests and vendor account integrations have not. [Verification and limitations](docs/verification.md) lists the remaining live checks. Cursor history discovery and newer Codex history layouts need explicit binding; see the [support matrix](docs/agent-support.md). No images, personal credentials, or host virtualization packages are installed by building this repository.
 
@@ -98,9 +98,9 @@ agent-vm export new-name --output ./new-name-export.tar
 
 Exit the agent before export. The archive contains a binary-capable Git patch against the **initial copied snapshot**, a NUL-delimited status listing, the baseline hash, and a complete current workspace archive (including untracked/ignored guest files, excluding `.git`). It includes committed agent changes and deletion records. Review/extract separately; the tool never applies, merges, pushes or overwrites an existing export. Archives may contain secrets the agent created: handle them as private artifacts. [Project isolation details](docs/project-isolation.md).
 
-## Mac mini / Herdr workflow
+## Terminal and SSH workflow
 
-Open a Herdr terminal tab, SSH to your Mac mini, change into your source repository and run `agent-vm`. Select a conversation or start one with `run`. Open another tab to run an independent agent/OS combination. Each guest process has its own tmux session and workspace. If a tab disconnects, reconnect to the **same Mac**, run `agent-vm resume`, and select the conversation. You can also use the CLI directly in Terminal on another Apple Silicon Mac; its configuration and registry are local to that host.
+Open a terminal locally or connect over SSH to an Apple Silicon Mac, change into your source repository and run `agent-vm`. Select a conversation or start one with `run`. Open another terminal to run an independent agent/OS combination. Each guest process has its own tmux session and workspace. If a connection disconnects, reconnect to the **same host**, run `agent-vm resume`, and select the conversation. Configuration and the registry are local to that host.
 
 Use `--detach` and explicit arguments for noninteractive launch; use `--json` for lists/status/show/doctor or detached launch. Progress goes to stderr, never JSON stdout. Interactive shell/picker/attach requires a TTY. Delete needs `--yes` without one. `--config` and `--data-dir` isolate configuration and state; keep the data directory on a local disk for SQLite/WAL and advisory locking.
 

@@ -23,6 +23,6 @@ The additional opt-in local tmux test ran with an isolated socket and temporary 
 - Native Cursor auth-status schema/exit semantics are unverified, so preflight does not claim authenticated status; the native interface decides.
 - Project snapshots intentionally omit original Git history/remotes/staging metadata and reject submodules/escaping symlinks; no atomic host filesystem snapshot or LFS hydration is promised.
 - Multiple guest sessions share native account credentials. Cross-VM refresh-token coordination and credential synchronization are not implemented; independent guest login is preferred.
-- UI model tests and local tmux cover parts of terminal behavior; end-to-end Herdr/SSH handoff still requires manual checks.
+- UI model tests and local tmux cover parts of terminal behavior; end-to-end terminal/SSH handoff still requires manual checks.
 
 Follow [live-validation.md](live-validation.md) before relying on this development release for production work. The implementation is testable and builds locally, but this document does not certify untested integrations.

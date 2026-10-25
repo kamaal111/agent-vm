@@ -4,7 +4,17 @@ A Go CLI for persistent Linux ARM64 and macOS ARM64 Tart VMs on an Apple Silicon
 
 **Development release:** local automated tests and isolated tmux checks have run; real Tart guests and vendor account integrations have not. [Verification and limitations](docs/verification.md) lists the remaining live checks. Cursor history discovery and newer Codex history layouts need explicit binding; see the [support matrix](docs/agent-support.md). No images, personal credentials, or host virtualization packages are installed by building this repository.
 
-## Build and install
+## Install
+
+On an Apple Silicon Mac:
+
+```sh
+brew install kamaal111/tap/agent-vm
+```
+
+Then follow [First setup](#first-setup) to configure Tart and your VMs.
+
+## Build from source
 
 Use Go **1.27.3** ([verified versions and sources](docs/technology-baseline.md)) and `just` for the repository task commands. Run `just` to list available commands. The executable builds without CGO:
 
@@ -17,7 +27,7 @@ agent-vm completion zsh > /path/on/your/fpath/_agent-vm
 
 Choose an installation directory you can write, such as `~/.local/bin`, if `/usr/local/bin` needs administrator access. Add it to PATH. Go modules and checksums are pinned in go.mod/go.sum; no npm or guest tooling is required to build the host CLI.
 
-Release publishing and Homebrew setup are described in [releases.md](docs/releases.md). The initial Homebrew formula becomes available after its tap PR is merged.
+For release publishing, see [releases.md](docs/releases.md).
 
 ## First setup
 

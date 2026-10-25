@@ -56,6 +56,10 @@ func (o *options) print(cmd *cobra.Command, v any) error {
 	}
 	return nil
 }
+
+// Version is overridden by the release build using -ldflags.
+var Version = "0.1.0-dev"
+
 func New() *cobra.Command {
 	cp, data, err := config.Paths()
 	if err != nil {
@@ -63,7 +67,7 @@ func New() *cobra.Command {
 		data = ".agent-vm"
 	}
 	o := &options{config: cp, data: data}
-	root := &cobra.Command{Use: "agent-vm", Short: "Persistent development VMs and native coding-agent sessions", Version: "0.1.0-dev", SilenceUsage: true, SilenceErrors: true, Args: cobra.NoArgs}
+	root := &cobra.Command{Use: "agent-vm", Short: "Persistent development VMs and native coding-agent sessions", Version: Version, SilenceUsage: true, SilenceErrors: true, Args: cobra.NoArgs}
 	root.PersistentFlags().StringVar(&o.config, "config", cp, "TOML configuration file")
 	root.PersistentFlags().StringVar(&o.data, "data-dir", data, "Private local registry and SSH state directory")
 	root.PersistentFlags().BoolVar(&o.json, "json", false, "Machine-readable output (list/status/show/doctor and detached run)")

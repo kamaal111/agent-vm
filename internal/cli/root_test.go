@@ -42,3 +42,17 @@ func TestDeletionRequiresExplicitNoninteractiveConfirmation(t *testing.T) {
 	cmd.SetArgs([]string{"--config", filepath.Join(dir, "absent.toml"), "--data-dir", filepath.Join(dir, "data"), "delete", "unrelated"})
 	u.Error(t, cmd.Execute())
 }
+
+func TestVersionDoesNotCreateDataOrLoadBrokenConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "broken.toml")
+	u.Write(t, cfg, "[[[invalid")
+	cmd := cli.New()
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"--config", cfg, "--data-dir", filepath.Join(dir, "data"), "--version"})
+	u.OK(t, cmd.Execute())
+	u.Equal(t, output.String(), "agent-vm version "+cli.Version+"\n")
+	_, err := os.Stat(filepath.Join(dir, "data"))
+	u.Equal(t, os.IsNotExist(err), true)
+}

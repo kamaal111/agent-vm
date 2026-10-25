@@ -17,6 +17,8 @@ agent-vm completion zsh > /path/on/your/fpath/_agent-vm
 
 Choose an installation directory you can write, such as `~/.local/bin`, if `/usr/local/bin` needs administrator access. Add it to PATH. Go modules and checksums are pinned in go.mod/go.sum; no npm or guest tooling is required to build the host CLI.
 
+Release publishing and Homebrew setup are described in [releases.md](docs/releases.md). The initial Homebrew formula becomes available after its tap PR is merged.
+
 ## First setup
 
 1. Install Tart 2.41.1 separately, after reviewing its license. Prepare separate credential-free images using [base-images.md](docs/base-images.md). No floating image defaults are provided.
@@ -112,4 +114,6 @@ just check
 AGENT_VM_TMUX_TEST=1 go test ./internal/guest -run TestTmux -v
 ```
 
-`just check` runs formatting verification, module verification, vet, tests, race checks, pinned govulncheck and a CGO-free macOS ARM64 build. The optional tmux check uses a temporary home and socket. Real VM checks are [explicitly opt-in](docs/live-validation.md). [Architecture](docs/architecture.md), [implementation plan](docs/implementation-plan.md), [baseline](docs/technology-baseline.md) and [update workflow](docs/base-images.md#updates) explain the boundaries. Dependabot updates modules and immutable CI action references; updates must pass compatibility tests and baseline review.
+Python release-tool tests use pytest: run `uv run --locked pytest` with [uv](https://docs.astral.sh/uv/) installed.
+
+`just check` runs formatting verification, module verification, vet, tests, race checks, pinned govulncheck and a CGO-free macOS ARM64 build. The optional tmux check uses a temporary home and socket. Real VM checks are [explicitly opt-in](docs/live-validation.md). [Architecture](docs/architecture.md), [implementation plan](docs/implementation-plan.md), [baseline](docs/technology-baseline.md) and [update workflow](docs/base-images.md#updates) explain the boundaries. Dependabot updates modules and CI action major versions; updates must pass compatibility tests and baseline review.
